@@ -1,0 +1,41 @@
+name: "PoC: JS Injection via repository_dispatch"
+
+# This mirrors actions/runner-images create_pull_request.yml and update_github_release.yml
+# where client_payload values are injected into github-script JS context
+
+on:
+  repository_dispatch:
+    types: [poc-js-injection]
+
+jobs:
+  vulnerable-js:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "VULNERABLE: client_payload in JS double-quote context"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // This mirrors: title: "${{ github.event.client_payload.pr_title }}"
+            // Attacker can break out of quotes with: ", console.log("INJECTED"), "
+            const title = "${{ github.event.client_payload.pr_title }}"
+            console.log("PR Title:", title)
+
+      - name: "VULNERABLE: client_payload in JS template literal"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // This mirrors: body: `${{ github.event.client_payload.pr_body }}`
+            // Attacker can break out with: `+console.log("INJECTED")+`
+            const body = `${{ github.event.client_payload.pr_body }}`
+            console.log("PR Body:", body)
+
+      - name: "VULNERABLE: client_payload unquoted in JS"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // This mirrors: prerelease: ${{ github.event.client_payload.prerelease }}
+            // Attacker sends: true}); console.log("INJECTED"); ({a: true
+            const opts = {
+              prerelease: ${{ github.event.client_payload.prerelease }}
+            }
+            console.log("Options:", opts)

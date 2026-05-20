@@ -1,0 +1,42 @@
+name: "PoC: PR Title Chain (mirrors trigger-ubuntu-win-build.yml)"
+
+# This mirrors the cross-repo chain in actions/runner-images:
+# 1. pull_request_target fires on label
+# 2. PR title set as env var (safe from shell injection in THIS workflow)
+# 3. PR title dispatched to another workflow via repository_dispatch
+# 4. Receiving workflow injects client_payload into shell/JS (VULNERABLE)
+
+run-name: "CI - ${{ github.event.pull_request.title }}"
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  dispatch-chain:
+    if: github.event.label.name == 'run-ci'
+    runs-on: ubuntu-latest
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Show PR title flowing into dispatch payload"
+        run: |
+          echo "=== PoC: PR Title Chain ==="
+          echo "PR_TITLE env var: ${PR_TITLE}"
+          echo "This value will be sent as client_payload to another workflow"
+          echo "In actions/runner-images, this goes to actions/runner-images-ci (private)"
+          echo "---"
+          echo "Simulating dispatch with PR title in payload..."
+
+      - name: "Dispatch to shell injection workflow (same repo for demo)"
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: poc-shell-injection
+          client-payload: |
+            {
+              "branch_name": "${{ env.PR_TITLE }}",
+              "version": "demo"
+            }

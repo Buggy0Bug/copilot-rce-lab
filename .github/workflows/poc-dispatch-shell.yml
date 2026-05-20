@@ -1,0 +1,23 @@
+name: "PoC: Shell Injection via repository_dispatch"
+
+# This mirrors actions/runner-images create_pull_request.yml
+# where client_payload.ReleaseBranchName is injected into shell run: block
+
+on:
+  repository_dispatch:
+    types: [poc-shell-injection]
+
+jobs:
+  vulnerable-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "VULNERABLE: client_payload in shell context"
+        run: |
+          echo "=== PoC: Expression injection in shell context ==="
+          echo "This mirrors: git checkout \${{ github.event.client_payload.branch_name }}"
+          echo "Attacker controls branch_name via repository_dispatch"
+          echo "---"
+          echo "Processing branch: ${{ github.event.client_payload.branch_name }}"
+          echo "Release version: ${{ github.event.client_payload.version }}"
