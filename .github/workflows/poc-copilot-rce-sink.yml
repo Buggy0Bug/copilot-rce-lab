@@ -1,0 +1,44 @@
+name: "PoC Path A: Copilot-triggered dispatch -> RCE + secret access"
+
+# SINK for Path A. Mirrors actions/runner-images merge_pull_request.yml:
+#   - repository_dispatch trigger. Reachable by ANY token with contents:write.
+#     The Copilot Coding Agent's GITHUB_TOKEN has contents:write (it pushes
+#     branches / opens PRs), which is exactly what POST /repos/.../dispatches
+#     requires. So Copilot can reach this sink; the external attacker cannot.
+#   - client_payload.ReleaseBranchName dropped raw into a shell run: block.
+#   - a high-value secret in scope (mirrors PRAPPROVAL_SECRET / CI_PR_TOKEN).
+#
+# Point of the PoC: the attacker never had write access. Copilot did, and
+# Copilot was made (by an injected Issue) to send the dispatch. The injected
+# command then runs with a secret the attacker could never read directly.
+
+on:
+  repository_dispatch:
+    types: [copilot-poc-rce]
+
+# No `permissions:` block, exactly like the real runner-images dispatch
+# workflows -> the job inherits the full default GITHUB_TOKEN.
+
+jobs:
+  vulnerable-sink:
+    runs-on: ubuntu-latest
+    env:
+      # Set a FAKE value in repo Settings > Secrets and variables > Actions.
+      # Mirrors secrets.PRAPPROVAL_SECRET / secrets.CI_PR_TOKEN being in scope.
+      HIGH_VALUE_SECRET: ${{ secrets.FAKE_HIGH_VALUE_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ReleaseBranchName is attacker/Copilot-controlled via client_payload.
+      # The injected payload breaks out of the git command and runs its own
+      # shell statement with HIGH_VALUE_SECRET in the environment.
+      - name: "VULNERABLE: client_payload.ReleaseBranchName in shell context"
+        run: |
+          echo "=== Path A sink reached via Copilot-triggered repository_dispatch ==="
+          git checkout ${{ github.event.client_payload.ReleaseBranchName }}-docs || true
+          echo "checkout step finished"
+
+      # Control marker. If the injection fired, you'll see the canary emitted
+      # by the injected command ABOVE this line, in the checkout step's log.
+      - name: "Control marker"
+        run: echo "CONTROL: sink completed. If no canary appeared above, injection did not fire."
